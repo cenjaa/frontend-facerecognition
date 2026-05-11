@@ -27,10 +27,12 @@ function AdminLoginModal({ onClose, onResult }) {
 
       try {
         const blob = await captureBlob();
-        if (blob) {
+        // Check if video is actually ready for drawing
+        if (blob && videoRef.current && videoRef.current.readyState >= 2) {
           const formData = new FormData();
           formData.append('file', blob, 'admin.jpg');
 
+          // Ensure this matches your new Python @app.post("/api/infer")
           const res = await fetch('/api/infer', { method: 'POST', body: formData });
           const data = await res.json();
 
@@ -51,7 +53,7 @@ function AdminLoginModal({ onClose, onResult }) {
 
     const timer = setTimeout(inferLoop, 1000);
     return () => { isRunning = false; clearTimeout(timer); };
-  }, [isReady, captureBlob, onResult]);
+  }, [isReady]); // Only restart if the camera itself restarts
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', animation: 'fadeIn 0.2s ease-out' }}>
@@ -121,40 +123,77 @@ export default function InferencingPage() {
   const adminTapTimer = useRef(null);
   const prevFrameData = useRef(null);
   const { videoRef: mainCameraRef, isReady: cameraReady, error: cameraError, captureBlob } = useCamera(!showAdminLogin);
+  
+  const prevFrameRef = useRef(null);
+  const motionCanvasRef = useRef(null);
 
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  const checkMotion = (videoEl) => {
-    if (!videoEl) return true;
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = 64; canvas.height = 48;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(videoEl, 0, 0, 64, 48);
-      const currentData = ctx.getImageData(0, 0, 64, 48).data;
+  const checkMotion = (videoElement) => {
+  if (!videoElement || videoElement.readyState < 2 || videoElement.videoWidth === 0 || videoElement.currentTime === 0) return false;
 
-      let motion = false;
-      if (prevFrameData.current) {
-        let diffCount = 0;
-        for (let i = 0; i < currentData.length; i += 4) {
-          const diff = Math.abs(currentData[i] - prevFrameData.current[i]) +
-            Math.abs(currentData[i + 1] - prevFrameData.current[i + 1]) +
-            Math.abs(currentData[i + 2] - prevFrameData.current[i + 2]);
-          if (diff > 120) diffCount++;
-        }
-        if (diffCount > (64 * 48 * 0.03)) motion = true;
-      } else {
-        motion = true;
-      }
-      prevFrameData.current = currentData;
-      return motion;
-    } catch (e) {
-      return true; 
+  if (!motionCanvasRef.current) {
+    const newCanvas = document.createElement('canvas');
+    newCanvas.width = 64;
+    newCanvas.height = 48;
+    newCanvas.style.position = 'fixed';
+    newCanvas.style.top = '-100px';
+    newCanvas.style.opacity = '0.001';
+    newCanvas.style.pointerEvents = 'none';
+    document.body.appendChild(newCanvas);
+    motionCanvasRef.current = newCanvas;
+  }
+  
+  const canvas = motionCanvasRef.current;
+  const ctx = canvas.getContext('2d');
+
+  const width = canvas.width;
+  const height = canvas.height;
+
+  // Use the most explicit drawImage call to help the Pi's GPU drivers
+  ctx.drawImage(videoElement, 0, 0, videoElement.videoWidth, videoElement.videoHeight, 0, 0, width, height);
+  
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const currentFrame = imageData.data;
+
+  // Check if we are actually getting any data (if first few pixels are all 0, signal might be dead)
+  let hasData = false;
+  for (let i = 0; i < 100; i += 4) {
+    if (currentFrame[i] > 0 || currentFrame[i+1] > 0 || currentFrame[i+2] > 0) {
+      hasData = true;
+      break;
     }
-  };
+  }
+
+  if (!prevFrameRef.current) {
+    prevFrameRef.current = new Uint8ClampedArray(currentFrame);
+    setDebugMotionScore(`0.00% ${hasData ? '(Signal OK)' : '(NO SIGNAL)'}`);
+    return false;
+  }
+
+  let diffPixels = 0;
+  const prevFrame = prevFrameRef.current;
+
+  for (let i = 0; i < currentFrame.length; i += 4) {
+    const diff = (Math.abs(currentFrame[i] - prevFrame[i]) +
+                  Math.abs(currentFrame[i+1] - prevFrame[i+1]) +
+                  Math.abs(currentFrame[i+2] - prevFrame[i+2])) / 3;
+
+    if (diff > 35) { // Slightly more sensitive
+      diffPixels++;
+    }
+  }
+
+  prevFrameRef.current = new Uint8ClampedArray(currentFrame);
+
+  const totalPixels = width * height;
+  const motionScore = (diffPixels / totalPixels) * 100;
+  
+  return motionScore > 0.3;
+};
 
   useEffect(() => {
     if (status !== 'standby' || !cameraReady) return;
@@ -226,7 +265,7 @@ export default function InferencingPage() {
 
     const timer = setTimeout(inferLoop, 1000);
     return () => { isRunning = false; clearTimeout(timer); };
-  }, [status, cameraReady, captureBlob, mainCameraRef]);
+  }, [status, cameraReady]); // Removed captureBlob and mainCameraRef to be safe
 
   useEffect(() => {
     if (status === 'success' || status === 'error') {
@@ -258,14 +297,16 @@ export default function InferencingPage() {
       {/* ── 1. CORPORATE TOP BAR ── */}
       <div style={{ height: 60, background: PNM_BLUE, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 32px', zIndex: 50, position: 'relative', boxShadow: '0 2px 10px rgba(0,0,0,0.15)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          {/* Text Logo replacement - Can swap with <img src={pnmLogo} /> easily */}
-          <span style={{ fontSize: 26, fontWeight: 900, color: '#fff', letterSpacing: 1 }}>PNM</span>
+          {/* Logo with 3-tap admin trigger */}
+          <img 
+            src="/logo/Logo_PNM.png" 
+            alt="PNM Logo" 
+            onClick={handleAdminTap}
+            style={{ height: 40, cursor: 'pointer', userSelect: 'none' }} 
+          />
           <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.3)' }} />
           <span style={{ color: '#fff', fontSize: 15, fontWeight: 500 }}>Sistem Absensi Digital</span>
         </div>
-        <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontStyle: 'italic' }}>
-          Divisi Aplikasi Teknologi Informasi
-        </span>
       </div>
 
       {/* ── MAIN CONTENT AREA ── */}
@@ -399,19 +440,19 @@ export default function InferencingPage() {
         </div> 
       </div> {/* End Main Area */}
 
-      <button
-        onClick={handleAdminTap}
-        style={{ position: 'absolute', bottom: 16, right: 16, width: 60, height: 60, borderRadius: '50%', opacity: 0, cursor: 'pointer', border: 'none', background: 'transparent', zIndex: 20 }}
-        aria-label="Admin access"
-      />
+
 
       {showAdminLogin && (
         <AdminLoginModal
           onClose={() => setShowAdminLogin(false)}
-          onResult={(isAdmin, userId, name) => {
+          onResult={(success, userId, name) => {
+            if (success) {
+              // Store admin ID for created_by tracking
+              localStorage.setItem('pnm_admin_id', userId);
+              localStorage.setItem('pnm_admin_name', name);
+              navigate('/pin-code', { state: { userId, name } });
+            }
             setShowAdminLogin(false);
-            if (isAdmin) navigate('/pin-code', { state: { userId, name } });
-            else setShowAdminError(true);
           }}
         />
       )}

@@ -31,10 +31,17 @@ export default function RegisterFacePage() {
   useEffect(() => {
     const createUser = async () => {
       try {
+        const adminId = localStorage.getItem('pnm_admin_id') || 'Unknown Admin';
         const res = await fetch('/api/create_user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nip, name: 'Karyawan Baru', email: '' })
+          body: JSON.stringify({ 
+            nip, 
+            name: 'Karyawan Baru', 
+            email: '',
+            created_by: adminId,
+            dataset_path: `dataset/${nip}` // Using NIP as folder name for the dataset
+          })
         });
         const data = await res.json();
         if (data.status === 'success') {
@@ -187,6 +194,8 @@ export default function RegisterFacePage() {
       </div>
 
       <div style={{ flex: 1, display: 'flex', gap: 24, padding: '16px 32px 24px', minHeight: 0 }}>
+        
+        {/* ── LEFT PANEL: POSES ── */}
         <div style={{
           width: 220, flexShrink: 0,
           background: '#fff', border: '2px solid #e2e8f0', borderRadius: 12, padding: '16px',
@@ -195,17 +204,39 @@ export default function RegisterFacePage() {
           <p style={{ color: PNM_BLUE, fontWeight: 800, fontSize: 13, marginBottom: 12, alignSelf: 'flex-start', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             Posisi Wajib
           </p>
-          <img src="/poses/Depan.png" alt="Depan" style={{ width: 80, height: 80, objectFit: 'contain', marginBottom: 12, opacity: currentPose === 0 ? 1 : 0.25, filter: currentPose === 0 ? 'drop-shadow(0px 4px 6px rgba(0,0,0,0.1))' : 'none' }} />
-          <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
-            <img src="/poses/Kiri.png" alt="Kiri" style={{ width: 60, height: 60, objectFit: 'contain', opacity: currentPose === 1 ? 1 : 0.25 }} />
-            <img src="/poses/Kanan.png" alt="Kanan" style={{ width: 60, height: 60, objectFit: 'contain', opacity: currentPose === 2 ? 1 : 0.25 }} />
+          
+          {/* Main Pose: Depan */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 12, opacity: currentPose === 0 ? 1 : 0.3, transition: 'opacity 0.3s' }}>
+            <img src="/poses/Depan.png" alt="Depan" style={{ width: 80, height: 80, objectFit: 'contain', marginBottom: 4, filter: currentPose === 0 ? 'drop-shadow(0px 4px 8px rgba(0,102,179,0.2))' : 'none' }} />
+            <span style={{ fontSize: 13, fontWeight: currentPose === 0 ? 800 : 600, color: currentPose === 0 ? PNM_BLUE : '#64748b' }}>Depan</span>
           </div>
-          <div style={{ display: 'flex', gap: 16 }}>
-            <img src="/poses/Bawah.png" alt="Bawah" style={{ width: 60, height: 60, objectFit: 'contain', opacity: currentPose === 3 ? 1 : 0.25 }} />
-            <img src="/poses/Atas.png" alt="Atas" style={{ width: 60, height: 60, objectFit: 'contain', opacity: currentPose === 4 ? 1 : 0.25 }} />
+
+          {/* Row 2: Kiri & Kanan */}
+          <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: currentPose === 1 ? 1 : 0.3, transition: 'opacity 0.3s' }}>
+              <img src="/poses/Kiri.png" alt="Kiri" style={{ width: 56, height: 56, objectFit: 'contain', marginBottom: 4 }} />
+              <span style={{ fontSize: 11, fontWeight: currentPose === 1 ? 800 : 600, color: currentPose === 1 ? PNM_BLUE : '#64748b' }}>Kiri</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: currentPose === 2 ? 1 : 0.3, transition: 'opacity 0.3s' }}>
+              <img src="/poses/Kanan.png" alt="Kanan" style={{ width: 56, height: 56, objectFit: 'contain', marginBottom: 4 }} />
+              <span style={{ fontSize: 11, fontWeight: currentPose === 2 ? 800 : 600, color: currentPose === 2 ? PNM_BLUE : '#64748b' }}>Kanan</span>
+            </div>
+          </div>
+
+          {/* Row 3: Bawah & Atas */}
+          <div style={{ display: 'flex', gap: 24 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: currentPose === 3 ? 1 : 0.3, transition: 'opacity 0.3s' }}>
+              <img src="/poses/Bawah.png" alt="Bawah" style={{ width: 56, height: 56, objectFit: 'contain', marginBottom: 4 }} />
+              <span style={{ fontSize: 11, fontWeight: currentPose === 3 ? 800 : 600, color: currentPose === 3 ? PNM_BLUE : '#64748b' }}>Bawah</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: currentPose === 4 ? 1 : 0.3, transition: 'opacity 0.3s' }}>
+              <img src="/poses/Atas.png" alt="Atas" style={{ width: 56, height: 56, objectFit: 'contain', marginBottom: 4 }} />
+              <span style={{ fontSize: 11, fontWeight: currentPose === 4 ? 800 : 600, color: currentPose === 4 ? PNM_BLUE : '#64748b' }}>Atas</span>
+            </div>
           </div>
         </div>
 
+        {/* ── RIGHT PANEL: CAMERA ── */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
           <div style={{
             flex: 1, background: PNM_DARK, borderRadius: 12, overflow: 'hidden',
@@ -234,7 +265,7 @@ export default function RegisterFacePage() {
           </div>
 
           {/* Pose instruction bar */}
-          <div style={{ marginTop: 12, background: '#fff', border: '2px solid #e2e8f0', borderRadius: 10, padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.03)', flexShrink: 0 /* ADDED: Prevents the instruction bar from shrinking */ }}>
+          <div style={{ marginTop: 12, background: '#fff', border: '2px solid #e2e8f0', borderRadius: 10, padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.03)', flexShrink: 0 }}>
             <p style={{ fontSize: 16, fontWeight: 800, color: PNM_DARK, margin: 0 }}>
               {isUploading ? "Memproses Data..." : (countdown !== null ? `Siapkan posisi: ${POSES[currentPose].next || 'Selesai'}` : POSES[currentPose].label)}
             </p>

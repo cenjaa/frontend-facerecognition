@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 /**
  * Custom hook to access the device camera via MediaDevices API.
@@ -16,7 +16,6 @@ export function useCamera(active = true, constraints = {}) {
 
   useEffect(() => {
     if (!active) {
-      // Stop camera when deactivated
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
@@ -79,7 +78,7 @@ export function useCamera(active = true, constraints = {}) {
    * Capture a single frame from the video as a base64 JPEG.
    * @returns {string|null} Base64-encoded JPEG data URL
    */
-  const captureFrame = () => {
+  const captureFrame = useCallback(() => {
     if (!videoRef.current || !isReady) return null;
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth;
@@ -87,13 +86,13 @@ export function useCamera(active = true, constraints = {}) {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(videoRef.current, 0, 0);
     return canvas.toDataURL('image/jpeg', 0.85);
-  };
+  }, [isReady]);
 
   /**
    * Capture a frame as a Blob for sending to API.
    * @returns {Promise<Blob|null>}
    */
-  const captureBlob = () => {
+  const captureBlob = useCallback(() => {
     if (!videoRef.current || !isReady) return Promise.resolve(null);
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth;
@@ -103,7 +102,7 @@ export function useCamera(active = true, constraints = {}) {
     return new Promise((resolve) => {
       canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.85);
     });
-  };
+  }, [isReady]);
 
   return { videoRef, stream: streamRef.current, error, isReady, captureFrame, captureBlob };
 }

@@ -9,9 +9,7 @@ const PNM_DARK = '#1f2937';
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const adminName = location.state?.name || 'Admin';
-  
-  // ── ORIGINAL BACKEND LOGIC ──
+  const [apiAdminName, setApiAdminName] = useState(location.state?.name || 'Admin');
   const [stats, setStats] = useState({ totalUsers: 0, hadir: 0 });
   const [modelUpToDate, setModelUpToDate] = useState(true);
   const [isTraining, setIsTraining] = useState(false);
@@ -20,11 +18,21 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [uRes, dRes] = await Promise.all([fetch('/api/users'), fetch('/api/dashboard_stats')]);
-        const u = await uRes.json();
-        const d = await dRes.json();
-        setStats({ totalUsers: u.users?.length || 0, hadir: d.total_hadir || 0 });
-      } catch {}
+        const adminId = localStorage.getItem('pnm_admin_id');
+        if (!adminId) return;
+
+        const res = await fetch(`/api/admin_dashboard/${adminId}`);
+        const data = await res.json();
+        
+        if (data.admin_name) setApiAdminName(data.admin_name);
+        setStats({ 
+          totalUsers: data.total_users || 0, 
+          hadir: data.today_attendees || 0 
+        });
+        setModelUpToDate(!data.needs_retrain);
+      } catch (err) {
+        console.error("Dashboard fetch error:", err);
+      }
     })();
   }, []);
 
@@ -73,7 +81,7 @@ export default function AdminDashboardPage() {
             Selamat Datang,
           </h1>
           <p style={{ fontSize: 22, fontWeight: 800, color: PNM_BLUE, margin: '2px 0 8px' }}>
-            {adminName}
+            {apiAdminName}
           </p>
           <p style={{ fontSize: 15, color: '#64748b', fontWeight: 500, margin: 0 }}>
             Ringkasan data absensi dan manajemen sistem AI.
@@ -157,35 +165,51 @@ export default function AdminDashboardPage() {
             )}
           </div>
 
-          {/* RIGHT COLUMN — Add New User Card (50% Width) */}
+          {/* RIGHT COLUMN — Add New User Card (50% Width) - NOW IN PNM BLUE */}
           <button
             onClick={() => navigate('/register-user')}
             style={{
               flex: 1, 
               height: 250, 
-              background: PNM_DARK, borderRadius: 16,
+              background: PNM_BLUE, // Vibrant Corporate Blue
+              borderRadius: 16,
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              color: '#fff', border: `3px solid ${PNM_BLUE}`,
-              boxShadow: `0 12px 30px rgba(0, 102, 179, 0.25)`,
+              color: '#ffffff', border: 'none',
+              boxShadow: `0 8px 24px rgba(0, 102, 179, 0.35)`, // Smooth glowing shadow
               cursor: 'pointer', padding: '16px',
-              transition: 'transform 0.1s ease, box-shadow 0.1s ease'
+              transition: 'all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)'
             }}
-            onTouchStart={(e) => { e.currentTarget.style.transform = 'scale(0.98)'; }}
-            onTouchEnd={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+            onMouseOver={(e) => { 
+              e.currentTarget.style.transform = 'translateY(-4px)'; 
+              e.currentTarget.style.boxShadow = '0 14px 28px rgba(0, 102, 179, 0.45)'; 
+            }}
+            onMouseOut={(e) => { 
+              e.currentTarget.style.transform = 'translateY(0)'; 
+              e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 102, 179, 0.35)'; 
+            }}
+            onTouchStart={(e) => { 
+              e.currentTarget.style.transform = 'scale(0.98)'; 
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 102, 179, 0.2)'; 
+            }}
+            onTouchEnd={(e) => { 
+              e.currentTarget.style.transform = 'scale(1)'; 
+              e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 102, 179, 0.35)'; 
+            }}
           >
-            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              {/* Entirely white SVG icon for maximum contrast */}
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
                 <circle cx="9" cy="7" r="4" />
-                <line x1="19" y1="8" x2="19" y2="14" stroke={PNM_GREEN} strokeWidth="3" />
-                <line x1="22" y1="11" x2="16" y2="11" stroke={PNM_GREEN} strokeWidth="3" />
+                <line x1="19" y1="8" x2="19" y2="14" stroke="#fff" strokeWidth="3" />
+                <line x1="22" y1="11" x2="16" y2="11" stroke="#fff" strokeWidth="3" />
               </svg>
             </div>
             
             <h3 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 8px', letterSpacing: 0.5 }}>
               Registrasi Karyawan Baru
             </h3>
-            <p style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', margin: 0, padding: '0 16px', lineHeight: 1.4, fontWeight: 500 }}>
+            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.85)', textAlign: 'center', margin: 0, padding: '0 16px', lineHeight: 1.4, fontWeight: 500 }}>
               Daftarkan data wajah dan NIP karyawan ke dalam sistem AI.
             </p>
           </button>
