@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import API_BASE, { API_KEY } from '../apiConfig';
 
 /* ── Corporate Colors ────── */
 const PNM_BLUE = '#0066b3';
@@ -19,15 +20,21 @@ export default function AdminDashboardPage() {
     (async () => {
       try {
         const adminId = localStorage.getItem('pnm_admin_id');
-        if (!adminId) return;
+        const token = localStorage.getItem('pnm_admin_token');
+        if (!adminId || !token) return;
 
-        const res = await fetch(`/api/admin_dashboard/${adminId}`);
+        const res = await fetch(`${API_BASE}/api/admin_dashboard/${adminId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'X-API-Key': API_KEY
+          }
+        });
         const data = await res.json();
-        
+
         if (data.admin_name) setApiAdminName(data.admin_name);
-        setStats({ 
-          totalUsers: data.total_users || 0, 
-          hadir: data.today_attendees || 0 
+        setStats({
+          totalUsers: data.total_users || 0,
+          hadir: data.today_attendees || 0
         });
         setModelUpToDate(!data.needs_retrain);
       } catch (err) {
@@ -37,26 +44,31 @@ export default function AdminDashboardPage() {
   }, []);
 
   const handleTrain = async () => {
-    setIsTraining(true);
-    setTrainMessage('Melatih model...');
+    const token = localStorage.getItem('pnm_admin_token');
     try {
-      const res = await fetch('/api/train_model', { method: 'POST' });
+      const res = await fetch(`${API_BASE}/api/train_model`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-API-Key': API_KEY
+        }
+      });
       const data = await res.json();
       setTrainMessage(data.status === 'started' || data.status === 'success' ? 'Training selesai!' : 'Gagal');
-      
+
       if (data.status === 'started' || data.status === 'success') {
         // Slight delay so the user can read "Training selesai!" before the card switches
-        setTimeout(() => setModelUpToDate(true), 1000); 
+        setTimeout(() => setModelUpToDate(true), 1000);
       }
-    } catch { 
-      setTrainMessage('Gagal'); 
+    } catch {
+      setTrainMessage('Gagal');
     }
     setIsTraining(false);
   };
 
   return (
     <div style={{ width: '100vw', height: '100vh', background: 'linear-gradient(135deg, #e2e8f0 0%, #ffffff 100%)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      
+
       {/* ── CORPORATE TOP BAR ── */}
       <div style={{ height: 60, background: PNM_BLUE, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 32px', zIndex: 50, flexShrink: 0, boxShadow: '0 2px 10px rgba(0,0,0,0.15)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -64,8 +76,8 @@ export default function AdminDashboardPage() {
           <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.3)' }} />
           <span style={{ color: '#fff', fontSize: 15, fontWeight: 500 }}>Dashboard Administrator</span>
         </div>
-        <button 
-          onClick={() => navigate('/')} 
+        <button
+          onClick={() => navigate('/')}
           style={{ background: 'none', border: 'none', color: '#fff', fontSize: 14, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer' }}
         >
           Keluar Sistem
@@ -74,7 +86,7 @@ export default function AdminDashboardPage() {
 
       {/* ── MAIN CONTENT ── */}
       <div style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column' }}>
-        
+
         {/* Header Section */}
         <div style={{ marginBottom: 24 }}>
           <h1 style={{ fontSize: 28, fontWeight: 900, color: PNM_DARK, margin: 0, lineHeight: 1.2 }}>
@@ -93,7 +105,7 @@ export default function AdminDashboardPage() {
 
           {/* LEFT COLUMN — Stats + Model (50% Width) */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
-            
+
             {/* Corporate Stats Card */}
             <div style={{ background: '#fff', borderRadius: 16, padding: '20px 24px', boxShadow: '0 4px 15px rgba(0,0,0,0.04)', borderTop: `4px solid ${PNM_BLUE}` }}>
               <div style={{ display: 'flex', gap: 40 }}>
@@ -120,8 +132,8 @@ export default function AdminDashboardPage() {
 
             {/* Corporate Model Status Card */}
             {modelUpToDate ? (
-              <div style={{ 
-                background: 'linear-gradient(135deg, #f0fdf4 0%, #e6f6ec 100%)', 
+              <div style={{
+                background: 'linear-gradient(135deg, #f0fdf4 0%, #e6f6ec 100%)',
                 border: `2px solid #b2db62`, borderRadius: 16, padding: '16px 20px',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 4px 10px rgba(0,0,0,0.03)'
               }}>
@@ -138,7 +150,7 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
             ) : (
-              <div style={{ 
+              <div style={{
                 background: '#fffbeb', border: '2px solid #fcd34d', borderRadius: 16, padding: '16px 20px',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 4px 10px rgba(0,0,0,0.03)'
               }}>
@@ -153,8 +165,8 @@ export default function AdminDashboardPage() {
                 <button
                   onClick={handleTrain}
                   disabled={isTraining}
-                  style={{ 
-                    padding: '8px 20px', border: 'none', borderRadius: 8, 
+                  style={{
+                    padding: '8px 20px', border: 'none', borderRadius: 8,
                     fontSize: 14, fontWeight: 700, background: '#f59e0b', color: '#fff', cursor: 'pointer',
                     boxShadow: '0 4px 10px rgba(245, 158, 11, 0.3)', minWidth: 120
                   }}
@@ -169,8 +181,8 @@ export default function AdminDashboardPage() {
           <button
             onClick={() => navigate('/register-user')}
             style={{
-              flex: 1, 
-              height: 250, 
+              flex: 1,
+              height: 250,
               background: PNM_BLUE, // Vibrant Corporate Blue
               borderRadius: 16,
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -179,21 +191,21 @@ export default function AdminDashboardPage() {
               cursor: 'pointer', padding: '16px',
               transition: 'all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)'
             }}
-            onMouseOver={(e) => { 
-              e.currentTarget.style.transform = 'translateY(-4px)'; 
-              e.currentTarget.style.boxShadow = '0 14px 28px rgba(0, 102, 179, 0.45)'; 
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = 'translateY(-4px)';
+              e.currentTarget.style.boxShadow = '0 14px 28px rgba(0, 102, 179, 0.45)';
             }}
-            onMouseOut={(e) => { 
-              e.currentTarget.style.transform = 'translateY(0)'; 
-              e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 102, 179, 0.35)'; 
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 102, 179, 0.35)';
             }}
-            onTouchStart={(e) => { 
-              e.currentTarget.style.transform = 'scale(0.98)'; 
-              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 102, 179, 0.2)'; 
+            onTouchStart={(e) => {
+              e.currentTarget.style.transform = 'scale(0.98)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 102, 179, 0.2)';
             }}
-            onTouchEnd={(e) => { 
-              e.currentTarget.style.transform = 'scale(1)'; 
-              e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 102, 179, 0.35)'; 
+            onTouchEnd={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 102, 179, 0.35)';
             }}
           >
             <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
@@ -205,7 +217,7 @@ export default function AdminDashboardPage() {
                 <line x1="22" y1="11" x2="16" y2="11" stroke="#fff" strokeWidth="3" />
               </svg>
             </div>
-            
+
             <h3 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 8px', letterSpacing: 0.5 }}>
               Registrasi Karyawan Baru
             </h3>
@@ -213,7 +225,7 @@ export default function AdminDashboardPage() {
               Daftarkan data wajah dan NIP karyawan ke dalam sistem AI.
             </p>
           </button>
-          
+
         </div>
       </div>
     </div>

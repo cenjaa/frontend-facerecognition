@@ -27,12 +27,16 @@ export function useCamera(active = true, constraints = {}) {
     let cancelled = false;
 
     const startCamera = async () => {
+      // Small delay to allow hardware to release (Critical for Pi 4 stability)
+      await new Promise(r => setTimeout(r, 500));
+      if (cancelled) return;
+
       try {
         const mediaConstraints = {
           video: {
             facingMode: 'user',
-            width: { ideal: 640 },
-            height: { ideal: 480 },
+            width: 640,
+            height: 480,
             ...constraints,
           },
           audio: false,

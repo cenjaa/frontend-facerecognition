@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import API_BASE, { API_KEY } from '../apiConfig';
 
 const PNM_BLUE = '#0066b3';
 const PNM_GREEN = '#93c01f';
@@ -26,13 +27,18 @@ export default function PinCodePage() {
 
   const submitPin = async () => {
     try {
-      const res = await fetch('/api/verify_pin', {
+      const res = await fetch(`${API_BASE}/api/verify_pin`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
         body: JSON.stringify({ user_id: userId, pin }),
       });
       const data = await res.json();
       if (data.status === 'success') {
+        // Store auth token and metadata
+        localStorage.setItem('pnm_admin_token', data.token);
+        localStorage.setItem('pnm_admin_id', userId);
+        localStorage.setItem('pnm_admin_name', data.name || adminName);
+        
         navigate('/admin-dashboard', { state: { name: data.name || adminName } });
       } else {
         setError(true);

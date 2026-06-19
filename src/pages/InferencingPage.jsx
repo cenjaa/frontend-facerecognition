@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCamera } from '../hooks/useCamera';
+import API_BASE, { API_KEY } from '../apiConfig';
 
 /* ── Corporate Gradients per status ────── */
 const THEMES = {
@@ -33,11 +34,12 @@ function AdminLoginModal({ onClose, onResult }) {
           formData.append('file', blob, 'admin.jpg');
 
           // Ensure this matches your new Python @app.post("/api/infer")
-          const res = await fetch('/api/infer', { method: 'POST', body: formData });
+          const res = await fetch(`${API_BASE}/api/infer`, { method: 'POST', headers: { 'X-API-Key': API_KEY }, body: formData });
           const data = await res.json();
 
-          if (data.status === 'success' && data.detected && data.confidence >= 40.0) {
-            const nameRes = await fetch(`/api/user_name/${data.user_id}`);
+          if (data.status === 'success' && data.detected && data.confidence >= 75.0) {
+
+            const nameRes = await fetch(`${API_BASE}/api/user_name/${data.user_id}`, { headers: { 'X-API-Key': API_KEY } });
             const nameData = await nameRes.json();
             onResult(true, data.user_id, nameData.name || `User ${data.user_id}`);
             isRunning = false;
@@ -123,9 +125,11 @@ export default function InferencingPage() {
   const adminTapTimer = useRef(null);
   const prevFrameData = useRef(null);
   const { videoRef: mainCameraRef, isReady: cameraReady, error: cameraError, captureBlob } = useCamera(!showAdminLogin);
-  
+
   const prevFrameRef = useRef(null);
   const motionCanvasRef = useRef(null);
+  const voteBufferRef = useRef([]); // Stores last 3 user_ids for voting
+
 
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -133,67 +137,66 @@ export default function InferencingPage() {
   }, []);
 
   const checkMotion = (videoElement) => {
-  if (!videoElement || videoElement.readyState < 2 || videoElement.videoWidth === 0 || videoElement.currentTime === 0) return false;
+    if (!videoElement || videoElement.readyState < 2 || videoElement.videoWidth === 0 || videoElement.currentTime === 0) return false;
 
-  if (!motionCanvasRef.current) {
-    const newCanvas = document.createElement('canvas');
-    newCanvas.width = 64;
-    newCanvas.height = 48;
-    newCanvas.style.position = 'fixed';
-    newCanvas.style.top = '-100px';
-    newCanvas.style.opacity = '0.001';
-    newCanvas.style.pointerEvents = 'none';
-    document.body.appendChild(newCanvas);
-    motionCanvasRef.current = newCanvas;
-  }
-  
-  const canvas = motionCanvasRef.current;
-  const ctx = canvas.getContext('2d');
-
-  const width = canvas.width;
-  const height = canvas.height;
-
-  // Use the most explicit drawImage call to help the Pi's GPU drivers
-  ctx.drawImage(videoElement, 0, 0, videoElement.videoWidth, videoElement.videoHeight, 0, 0, width, height);
-  
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const currentFrame = imageData.data;
-
-  // Check if we are actually getting any data (if first few pixels are all 0, signal might be dead)
-  let hasData = false;
-  for (let i = 0; i < 100; i += 4) {
-    if (currentFrame[i] > 0 || currentFrame[i+1] > 0 || currentFrame[i+2] > 0) {
-      hasData = true;
-      break;
+    if (!motionCanvasRef.current) {
+      const newCanvas = document.createElement('canvas');
+      newCanvas.width = 64;
+      newCanvas.height = 48;
+      newCanvas.style.position = 'fixed';
+      newCanvas.style.top = '-100px';
+      newCanvas.style.opacity = '0.001';
+      newCanvas.style.pointerEvents = 'none';
+      document.body.appendChild(newCanvas);
+      motionCanvasRef.current = newCanvas;
     }
-  }
 
-  if (!prevFrameRef.current) {
+    const canvas = motionCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // Use the most explicit drawImage call to help the Pi's GPU drivers
+    ctx.drawImage(videoElement, 0, 0, videoElement.videoWidth, videoElement.videoHeight, 0, 0, width, height);
+
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const currentFrame = imageData.data;
+
+    // Check if we are actually getting any data (if first few pixels are all 0, signal might be dead)
+    let hasData = false;
+    for (let i = 0; i < 100; i += 4) {
+      if (currentFrame[i] > 0 || currentFrame[i + 1] > 0 || currentFrame[i + 2] > 0) {
+        hasData = true;
+        break;
+      }
+    }
+
+    if (!prevFrameRef.current) {
+      prevFrameRef.current = new Uint8ClampedArray(currentFrame);
+      return false;
+    }
+
+    let diffPixels = 0;
+    const prevFrame = prevFrameRef.current;
+
+    for (let i = 0; i < currentFrame.length; i += 4) {
+      const diff = (Math.abs(currentFrame[i] - prevFrame[i]) +
+        Math.abs(currentFrame[i + 1] - prevFrame[i + 1]) +
+        Math.abs(currentFrame[i + 2] - prevFrame[i + 2])) / 3;
+
+      if (diff > 35) { // Slightly more sensitive
+        diffPixels++;
+      }
+    }
+
     prevFrameRef.current = new Uint8ClampedArray(currentFrame);
-    setDebugMotionScore(`0.00% ${hasData ? '(Signal OK)' : '(NO SIGNAL)'}`);
-    return false;
-  }
 
-  let diffPixels = 0;
-  const prevFrame = prevFrameRef.current;
+    const totalPixels = width * height;
+    const motionScore = (diffPixels / totalPixels) * 100;
 
-  for (let i = 0; i < currentFrame.length; i += 4) {
-    const diff = (Math.abs(currentFrame[i] - prevFrame[i]) +
-                  Math.abs(currentFrame[i+1] - prevFrame[i+1]) +
-                  Math.abs(currentFrame[i+2] - prevFrame[i+2])) / 3;
-
-    if (diff > 35) { // Slightly more sensitive
-      diffPixels++;
-    }
-  }
-
-  prevFrameRef.current = new Uint8ClampedArray(currentFrame);
-
-  const totalPixels = width * height;
-  const motionScore = (diffPixels / totalPixels) * 100;
-  
-  return motionScore > 0.3;
-};
+    return motionScore > 0.3;
+  };
 
   useEffect(() => {
     if (status !== 'standby' || !cameraReady) return;
@@ -212,55 +215,67 @@ export default function InferencingPage() {
 
             setIsInferencing(true);
             const inferStartTime = Date.now();
-            
-            const [res] = await Promise.all([
-              fetch('/api/infer', { method: 'POST', body: formData }),
-              new Promise(r => setTimeout(r, 1000))
-            ]);
-            
+
+            const res = await fetch(`${API_BASE}/api/infer`, { method: 'POST', headers: { 'X-API-Key': API_KEY }, body: formData });
+
             const data = await res.json();
             setIsInferencing(false);
 
             if (data.status === 'success' && data.detected) {
               const latency = Date.now() - inferStartTime;
 
-              if (data.confidence >= 50.0) {
-                const authRes = await fetch('/api/attendance', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    user_id: data.user_id,
-                    presence_time: new Date().toISOString(),
-                    confidence: data.confidence,
-                    latency_ms: latency,
-                    status_id: 1 
-                  })
-                });
+              if (data.confidence >= 75.0) {
+                // Temporal Voting: Add to buffer
+                voteBufferRef.current.push(data.user_id);
+                if (voteBufferRef.current.length > 2) voteBufferRef.current.shift();
 
-                if (authRes.ok) {
-                  const nameRes = await fetch(`/api/user_name/${data.user_id}`);
-                  const nameData = await nameRes.json();
+                // Only proceed if we have 2 consecutive matches for the same user
+                const isConsistent = voteBufferRef.current.length === 2 &&
+                  voteBufferRef.current.every(id => id === data.user_id);
 
-                  setRecognizedUser({
-                    name: nameData.name || `User ${data.user_id}`,
-                    confidence: data.confidence,
-                    latency: latency
+                if (isConsistent) {
+                  voteBufferRef.current = []; // Reset buffer after success
+                  const authRes = await fetch(`${API_BASE}/api/attendance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+                    body: JSON.stringify({
+                      user_id: data.user_id,
+                      presence_time: new Date().toISOString(),
+                      confidence: data.confidence,
+                      latency_ms: latency,
+                      status_id: 1
+                    })
                   });
-                  setStatus('success');
-                } else {
-                  console.error('Go backend attendance error');
-                  setStatus('error');
+
+                  if (authRes.ok) {
+                    const nameRes = await fetch(`${API_BASE}/api/user_name/${data.user_id}`, { headers: { 'X-API-Key': API_KEY } });
+                    const nameData = await nameRes.json();
+
+                    setRecognizedUser({
+                      name: nameData.name || `User ${data.user_id}`,
+                      confidence: data.confidence,
+                      latency: latency
+                    });
+                    setStatus('success');
+                  } else {
+                    console.error('Go backend attendance error');
+                    setStatus('error');
+                  }
                 }
               } else {
-                setStatus('error');
+                voteBufferRef.current = []; // Reset if confidence drops
+                // We don't set status 'error' immediately to allow more attempts
               }
+            } else {
+              voteBufferRef.current = []; // Reset if no face detected
             }
+
           }
         }
       } catch (err) {
         console.error('Inference error:', err);
       }
-      if (isRunning) setTimeout(inferLoop, 1500);
+      if (isRunning) setTimeout(inferLoop, 400);
     };
 
     const timer = setTimeout(inferLoop, 1000);
@@ -287,22 +302,23 @@ export default function InferencingPage() {
     });
   };
 
-  const timeStr = currentTime.toLocaleTimeString('id-ID', { 
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false 
+  const timeStr = currentTime.toLocaleTimeString('id-ID', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
   }).replace(/\./g, ':');
 
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      
+
       {/* ── 1. CORPORATE TOP BAR ── */}
       <div style={{ height: 60, background: PNM_BLUE, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 32px', zIndex: 50, position: 'relative', boxShadow: '0 2px 10px rgba(0,0,0,0.15)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {/* Logo with 3-tap admin trigger */}
-          <img 
-            src="/logo/Logo_PNM.png" 
-            alt="PNM Logo" 
+          <img
+            src="/Logo_PNM.png"
+            alt="PNM Logo"
             onClick={handleAdminTap}
-            style={{ height: 40, cursor: 'pointer', userSelect: 'none' }} 
+            style={{ height: 40, cursor: 'pointer', userSelect: 'none' }}
+            onError={(e) => { e.target.src = '/logo/Logo_PNM.png'; }}
           />
           <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.3)' }} />
           <span style={{ color: '#fff', fontSize: 15, fontWeight: 500 }}>Sistem Absensi Digital</span>
@@ -311,7 +327,7 @@ export default function InferencingPage() {
 
       {/* ── MAIN CONTENT AREA ── */}
       <div style={{ flex: 1, position: 'relative' }}>
-        
+
         {/* ── ANIMATED BACKGROUND LAYERS (Preserved logic) ── */}
         <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
           {Object.entries(THEMES).map(([themeKey, gradient]) => (
@@ -329,10 +345,10 @@ export default function InferencingPage() {
 
         {/* ── LAYOUT WRAPPER (Stays exactly the same) ── */}
         <div style={{ position: 'relative', zIndex: 10, width: '100%', height: '100%', display: 'flex' }}>
-          
+
           {/* ── LEFT PANEL (Typography & Cards Refined) ── */}
           <div style={{ width: '45%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '24px 32px' }}>
-            
+
             <h1 style={{ fontSize: 36, fontWeight: 900, color: PNM_DARK, lineHeight: 1.1, marginBottom: 4 }}>
               Selamat Datang
             </h1>
@@ -393,7 +409,7 @@ export default function InferencingPage() {
               position: 'relative',
             }}>
               <video ref={mainCameraRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
-              
+
               {!cameraReady && (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
                   {cameraError || 'Memulai kamera perangkat...'}
@@ -437,7 +453,7 @@ export default function InferencingPage() {
               )}
             </div>
           </div>
-        </div> 
+        </div>
       </div> {/* End Main Area */}
 
 
