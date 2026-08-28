@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCamera } from '../hooks/useCamera';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import API_BASE, { API_KEY } from '../apiConfig';
 
 /* ── Corporate Gradients per status ────── */
@@ -122,9 +123,12 @@ export default function InferencingPage() {
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [showAdminError, setShowAdminError] = useState(false);
   const [isInferencing, setIsInferencing] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   const adminTapTimer = useRef(null);
   const prevFrameData = useRef(null);
-  const { videoRef: mainCameraRef, isReady: cameraReady, error: cameraError, captureBlob } = useCamera(!showAdminLogin);
+  const { isOnline } = useNetworkStatus();
+  const { videoRef: mainCameraRef, isReady: cameraReady, error: cameraError, captureBlob } = useCamera(!showAdminLogin && isOnline);
 
   const prevFrameRef = useRef(null);
   const motionCanvasRef = useRef(null);
@@ -199,7 +203,7 @@ export default function InferencingPage() {
   };
 
   useEffect(() => {
-    if (status !== 'standby' || !cameraReady) return;
+    if (status !== 'standby' || !cameraReady || !isOnline) return;
     let isRunning = true;
 
     const inferLoop = async () => {
@@ -280,7 +284,7 @@ export default function InferencingPage() {
 
     const timer = setTimeout(inferLoop, 1000);
     return () => { isRunning = false; clearTimeout(timer); };
-  }, [status, cameraReady]); // Removed captureBlob and mainCameraRef to be safe
+  }, [status, cameraReady, isOnline]); // Removed captureBlob and mainCameraRef to be safe
 
   useEffect(() => {
     if (status === 'success' || status === 'error') {
@@ -306,6 +310,20 @@ export default function InferencingPage() {
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
   }).replace(/\./g, ':');
 
+  // ── Debug / Test helpers (localhost only) ─────────────────
+  const triggerSuccess = () => {
+    setRecognizedUser({ name: 'Farchan Putra Indrianto', confidence: 92.5, latency: 145 });
+    setStatus('success');
+  };
+  const triggerError = () => {
+    setRecognizedUser(null);
+    setStatus('error');
+  };
+  const triggerAdminFail = () => {
+    setShowAdminLogin(false);
+    setShowAdminError(true);
+  };
+
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
@@ -323,7 +341,66 @@ export default function InferencingPage() {
           <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.3)' }} />
           <span style={{ color: '#fff', fontSize: 15, fontWeight: 500 }}>Sistem Absensi Digital</span>
         </div>
+
+        {/* Offline indicator */}
+        {!isOnline && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: 'rgba(245, 158, 11, 0.9)', padding: '6px 14px',
+            borderRadius: 50, animation: 'fadeIn 0.3s ease-out'
+          }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff', animation: 'pulse 2s infinite' }} />
+            <span style={{ color: '#fff', fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>Offline Mode</span>
+          </div>
+        )}
       </div>
+
+      {/* ── DEBUG PANEL (localhost only) ── */}
+      {isLocalhost && (
+        <div style={{ position: 'fixed', bottom: 16, left: 16, zIndex: 9999 }}>
+          {!showDebug ? (
+            <button
+              onClick={() => setShowDebug(true)}
+              style={{
+                background: 'rgba(0,0,0,0.5)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: 8, padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                cursor: 'pointer', letterSpacing: 0.5
+              }}
+            >
+              🛠 DEBUG
+            </button>
+          ) : (
+            <div style={{
+              background: 'rgba(15,23,42,0.92)', backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12,
+              padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 200
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ color: '#94a3b8', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>🛠 Test Panel</span>
+                <button onClick={() => setShowDebug(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+              </div>
+              <button
+                onClick={triggerSuccess}
+                style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', textAlign: 'left' }}
+              >
+                ✔ Wajah Dikenal
+              </button>
+              <button
+                onClick={triggerError}
+                style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', textAlign: 'left' }}
+              >
+                ✕ Wajah Tidak Dikenal
+              </button>
+              <button
+                onClick={triggerAdminFail}
+                style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', textAlign: 'left' }}
+              >
+                🔒 Admin — Gagal Deteksi
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── MAIN CONTENT AREA ── */}
       <div style={{ flex: 1, position: 'relative' }}>
@@ -343,116 +420,173 @@ export default function InferencingPage() {
           ))}
         </div>
 
-        {/* ── LAYOUT WRAPPER (Stays exactly the same) ── */}
+        {/* ── LAYOUT WRAPPER ── */}
         <div style={{ position: 'relative', zIndex: 10, width: '100%', height: '100%', display: 'flex' }}>
 
-          {/* ── LEFT PANEL (Typography & Cards Refined) ── */}
-          <div style={{ width: '45%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '24px 32px' }}>
+          {isOnline ? (
+            /* ══════════════════════════════════════════════════
+               ONLINE MODE — Face Recognition (original UI)
+               ══════════════════════════════════════════════════ */
+            <>
+              {/* ── LEFT PANEL (Typography & Cards Refined) ── */}
+              <div style={{ width: '45%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '24px 32px' }}>
 
-            <h1 style={{ fontSize: 36, fontWeight: 900, color: PNM_DARK, lineHeight: 1.1, marginBottom: 4 }}>
-              Selamat Datang
-            </h1>
-            <p style={{ fontSize: 16, color: '#64748b', fontWeight: 500, marginBottom: 8 }}>
-              Di Lingkungan PNM Tower
-            </p>
-
-            {/* Branded Clock */}
-            <p style={{ fontSize: 56, fontWeight: 900, color: PNM_BLUE, letterSpacing: '-1px', lineHeight: 1.1, margin: '16px 0 24px' }}>
-              {timeStr}
-            </p>
-
-            {status === 'standby' && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 8, animation: 'fadeIn 0.5s ease-out' }}>
-                <FaceIcon />
-                <p style={{ fontSize: 14, color: '#64748b', marginTop: 16, lineHeight: 1.4, maxWidth: 160, fontWeight: 500 }}>
-                  Arahkan wajah Anda ke layar untuk absensi
+                <h1 style={{ fontSize: 36, fontWeight: 900, color: PNM_DARK, lineHeight: 1.1, marginBottom: 4 }}>
+                  Selamat Datang
+                </h1>
+                <p style={{ fontSize: 16, color: '#64748b', fontWeight: 500, marginBottom: 8 }}>
+                  Di Lingkungan PNM Tower
                 </p>
+
+                {/* Branded Clock */}
+                <p style={{ fontSize: 56, fontWeight: 900, color: PNM_BLUE, letterSpacing: '-1px', lineHeight: 1.1, margin: '16px 0 24px' }}>
+                  {timeStr}
+                </p>
+
+                {status === 'standby' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 8, animation: 'fadeIn 0.5s ease-out' }}>
+                    <FaceIcon />
+                    <p style={{ fontSize: 14, color: '#64748b', marginTop: 16, lineHeight: 1.4, maxWidth: 160, fontWeight: 500 }}>
+                      Arahkan wajah Anda ke layar untuk absensi
+                    </p>
+                  </div>
+                )}
+
+                {status === 'success' && (
+                  <div style={{ background: '#fff', borderRadius: 12, padding: '20px 24px', boxShadow: '0 10px 40px rgba(0,0,0,0.08)', width: '100%', maxWidth: 320, borderTop: `6px solid ${PNM_GREEN}`, animation: 'popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}>
+                    <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, color: PNM_DARK, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      Absensi Berhasil
+                      <span style={{ color: PNM_GREEN, display: 'inline-block', animation: 'bounceIcon 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both' }}>✔</span>
+                    </h3>
+                    <p style={{ fontSize: 18, fontWeight: 800, color: PNM_BLUE }}>
+                      {recognizedUser?.name || 'Farchan Putra Indrianto'}
+                    </p>
+                    <p style={{ fontSize: 13, color: '#64748b', marginTop: 4, fontWeight: 500 }}>
+                      Divisi Aplikasi Teknologi Informasi
+                    </p>
+                  </div>
+                )}
+
+                {status === 'error' && (
+                  <div style={{ background: '#fff', borderRadius: 12, padding: '20px 24px', boxShadow: '0 10px 40px rgba(0,0,0,0.08)', width: '100%', maxWidth: 320, borderTop: '6px solid #ef4444', animation: 'popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}>
+                    <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, color: PNM_DARK, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      Tidak Dikenali
+                      <span style={{ color: '#ef4444', display: 'inline-block', animation: 'bounceIcon 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both' }}>✕</span>
+                    </h3>
+                    <p style={{ fontSize: 16, fontWeight: 700, color: '#ef4444' }}>Wajah Tidak Terdaftar</p>
+                    <p style={{ fontSize: 13, color: '#64748b', marginTop: 6, lineHeight: 1.4, fontWeight: 500 }}>
+                      Silahkan hubungi PIC absensi atau coba lagi dengan posisi yang jelas.
+                    </p>
+                  </div>
+                )}
               </div>
-            )}
 
-            {status === 'success' && (
-              <div style={{ background: '#fff', borderRadius: 12, padding: '20px 24px', boxShadow: '0 10px 40px rgba(0,0,0,0.08)', width: '100%', maxWidth: 320, borderTop: `6px solid ${PNM_GREEN}`, animation: 'popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}>
-                <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, color: PNM_DARK, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  Absensi Berhasil
-                  <span style={{ color: PNM_GREEN, display: 'inline-block', animation: 'bounceIcon 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both' }}>✔</span>
-                </h3>
-                <p style={{ fontSize: 18, fontWeight: 800, color: PNM_BLUE }}>
-                  {recognizedUser?.name || 'Farchan Putra Indrianto'}
-                </p>
-                <p style={{ fontSize: 13, color: '#64748b', marginTop: 4, fontWeight: 500 }}>
-                  Divisi Aplikasi Teknologi Informasi
-                </p>
-              </div>
-            )}
-
-            {status === 'error' && (
-              <div style={{ background: '#fff', borderRadius: 12, padding: '20px 24px', boxShadow: '0 10px 40px rgba(0,0,0,0.08)', width: '100%', maxWidth: 320, borderTop: '6px solid #ef4444', animation: 'popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}>
-                <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, color: PNM_DARK, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  Tidak Dikenali
-                  <span style={{ color: '#ef4444', display: 'inline-block', animation: 'bounceIcon 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both' }}>✕</span>
-                </h3>
-                <p style={{ fontSize: 16, fontWeight: 700, color: '#ef4444' }}>Wajah Tidak Terdaftar</p>
-                <p style={{ fontSize: 13, color: '#64748b', marginTop: 6, lineHeight: 1.4, fontWeight: 500 }}>
-                  Silahkan hubungi PIC absensi atau coba lagi dengan posisi yang jelas.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* ── RIGHT PANEL — Camera (Layout Preserved) ── */}
-          <div style={{ width: '55%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 32px 24px 0' }}>
-            <div style={{
-              width: '100%', height: '100%', maxHeight: '82vh', // Adjusted slightly to fit below top-bar
-              background: PNM_DARK, borderRadius: 16, overflow: 'hidden',
-              boxShadow: '0 12px 36px rgba(0,0,0,0.15)',
-              border: '4px solid #fff', // Crisp premium white border around the dark camera feed
-              position: 'relative',
-            }}>
-              <video ref={mainCameraRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
-
-              {!cameraReady && (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
-                  {cameraError || 'Memulai kamera perangkat...'}
-                </div>
-              )}
-
-              {/* Branded Status Overlay Badge */}
-              <div style={{
-                position: 'absolute', top: 16, left: 16,
-                background: isInferencing ? `rgba(147, 192, 31, 0.9)` : `rgba(0, 102, 179, 0.85)`, // Toggles between PNM Green and PNM Blue
-                backdropFilter: 'blur(4px)',
-                padding: '6px 14px', borderRadius: 50,
-                display: 'flex', alignItems: 'center', gap: 8,
-                transition: 'background 0.3s ease, box-shadow 0.3s ease',
-                boxShadow: isInferencing ? `0 0 12px rgba(147, 192, 31, 0.4)` : 'none'
-              }}>
+              {/* ── RIGHT PANEL — Camera (Layout Preserved) ── */}
+              <div style={{ width: '55%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 32px 24px 0' }}>
                 <div style={{
-                  width: 8, height: 8, borderRadius: '50%', background: '#fff',
-                  opacity: isInferencing ? 1 : 0.6,
-                  animation: isInferencing ? 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite' : 'none'
-                }} />
-                <span style={{ color: '#fff', fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
-                  {isInferencing ? 'Menganalisa...' : 'Siap Memindai'}
-                </span>
-              </div>
-
-              {isInferencing && (
-                <div style={{
-                  position: 'absolute', top: '20%', left: '25%', right: '25%', bottom: '20%',
-                  border: `2px solid rgba(147, 192, 31, 0.8)`, borderRadius: 16,
-                  boxShadow: `0 0 15px rgba(147, 192, 31, 0.2)`,
-                  pointerEvents: 'none'
+                  width: '100%', height: '100%', maxHeight: '82vh',
+                  background: PNM_DARK, borderRadius: 16, overflow: 'hidden',
+                  boxShadow: '0 12px 36px rgba(0,0,0,0.15)',
+                  border: '4px solid #fff',
+                  position: 'relative',
                 }}>
+                  <video ref={mainCameraRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
+
+                  {!cameraReady && (
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+                      {cameraError || 'Memulai kamera perangkat...'}
+                    </div>
+                  )}
+
+                  {/* Branded Status Overlay Badge */}
                   <div style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
-                    background: `rgba(147, 192, 31, 0.8)`,
-                    boxShadow: `0 0 8px rgba(147, 192, 31, 0.6)`,
-                    animation: 'scan 1.5s linear infinite'
-                  }} />
+                    position: 'absolute', top: 16, left: 16,
+                    background: isInferencing ? `rgba(147, 192, 31, 0.9)` : `rgba(0, 102, 179, 0.85)`,
+                    backdropFilter: 'blur(4px)',
+                    padding: '6px 14px', borderRadius: 50,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    transition: 'background 0.3s ease, box-shadow 0.3s ease',
+                    boxShadow: isInferencing ? `0 0 12px rgba(147, 192, 31, 0.4)` : 'none'
+                  }}>
+                    <div style={{
+                      width: 8, height: 8, borderRadius: '50%', background: '#fff',
+                      opacity: isInferencing ? 1 : 0.6,
+                      animation: isInferencing ? 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite' : 'none'
+                    }} />
+                    <span style={{ color: '#fff', fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
+                      {isInferencing ? 'Menganalisa...' : 'Siap Memindai'}
+                    </span>
+                  </div>
+
+                  {isInferencing && (
+                    <div style={{
+                      position: 'absolute', top: '20%', left: '25%', right: '25%', bottom: '20%',
+                      border: `2px solid rgba(147, 192, 31, 0.8)`, borderRadius: 16,
+                      boxShadow: `0 0 15px rgba(147, 192, 31, 0.2)`,
+                      pointerEvents: 'none'
+                    }}>
+                      <div style={{
+                        position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
+                        background: `rgba(147, 192, 31, 0.8)`,
+                        boxShadow: `0 0 8px rgba(147, 192, 31, 0.6)`,
+                        animation: 'scan 1.5s linear infinite'
+                      }} />
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+            </>
+          ) : (
+            /* ══════════════════════════════════════════════════
+               OFFLINE MODE — QR Code Fallback
+               ══════════════════════════════════════════════════ */
+            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 32, animation: 'fadeIn 0.5s ease-out' }}>
+
+              <h1 style={{ fontSize: 32, fontWeight: 900, color: PNM_DARK, lineHeight: 1.2, marginBottom: 4 }}>
+                Selamat Datang
+              </h1>
+              <p style={{ fontSize: 15, color: '#64748b', fontWeight: 500, marginBottom: 4 }}>
+                Di Lingkungan PNM Tower
+              </p>
+
+              {/* Clock */}
+              <p style={{ fontSize: 48, fontWeight: 900, color: PNM_BLUE, letterSpacing: '-1px', lineHeight: 1.1, margin: '8px 0 20px' }}>
+                {timeStr}
+              </p>
+
+              {/* QR Code Card */}
+              <div style={{
+                background: '#fff', borderRadius: 16, padding: '24px 32px',
+                boxShadow: '0 12px 40px rgba(0,0,0,0.1)',
+                borderTop: `6px solid ${PNM_BLUE}`,
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                maxWidth: 360,
+              }}>
+                <img
+                  src="/qr-fallback.png"
+                  alt="QR Code Absensi"
+                  style={{ width: 220, height: 220, objectFit: 'contain', marginBottom: 16 }}
+                />
+                <h2 style={{ fontSize: 18, fontWeight: 800, color: PNM_DARK, marginBottom: 6 }}>
+                  Scan QR Code untuk Absensi
+                </h2>
+                <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, fontWeight: 500, margin: 0 }}>
+                  Sistem pengenalan wajah sedang offline.<br />
+                  Gunakan aplikasi absensi untuk scan QR Code.
+                </p>
+              </div>
+
+              {/* Subtle offline badge */}
+              <div style={{
+                marginTop: 20, display: 'flex', alignItems: 'center', gap: 8,
+                background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)',
+                padding: '6px 16px', borderRadius: 50,
+              }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b', animation: 'pulse 2s infinite' }} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#b45309' }}>Menunggu koneksi internet...</span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div> {/* End Main Area */}
 
